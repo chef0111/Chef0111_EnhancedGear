@@ -2,6 +2,6 @@
     "pack": {
         "min_format": [84, 0],
     	"max_format": [2147483647, 0],
-        "description": "by NJPMeh"
+        "description": "Custom 3D models for weapons & tools, by Chef0111."
     }
 }
