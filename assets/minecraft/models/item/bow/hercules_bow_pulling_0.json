@@ -2,9 +2,9 @@
 	"credit": "Made with Blockbench",
 	"texture_size": [32, 32],
 	"textures": {
-		"0": "item/bow/hercules_bow",
-		"1": "item/bow/ammo",
-		"particle": "item/bow/hercules_bow"
+		"0": "minecraft:item/bow/hercules_bow",
+		"1": "minecraft:item/bow/ammo",
+		"particle": "minecraft:item/bow/hercules_bow"
 	},
 	"elements": [
 		{

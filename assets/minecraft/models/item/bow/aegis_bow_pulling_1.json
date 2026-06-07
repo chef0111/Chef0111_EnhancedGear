@@ -2,9 +2,9 @@
 	"credit": "Made with Blockbench",
 	"parent": "item/bow/hercules_bow",
 	"textures": {
-		"1": "item/bow/ammo",
-		"2": "item/bow/aegis_bow",
-		"particle": "item/bow/aegis_bow"
+		"1": "minecraft:item/bow/ammo",
+		"2": "minecraft:item/bow/aegis_bow",
+		"particle": "minecraft:item/bow/aegis_bow"
 	},
 	"elements": [
 		{

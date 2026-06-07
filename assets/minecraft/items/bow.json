@@ -1,71 +1,120 @@
 {
-  "model": {
-    "type": "minecraft:select",
-    "property": "minecraft:custom_name",
-    "cases": [
-      {
-        "when": "Aegis Bow",
-        "model": {
-          "type": "minecraft:select",
-          "property": "minecraft:pulling",
-          "cases": [
-            {
-              "when": "true",
-              "model": {
-                "type": "minecraft:select",
-                "property": "minecraft:pull",
-                "cases": [
-                  { "when": 0.65, "model": "minecraft:item/bow/aegis_bow_pulling_1" },
-                  { "when": 0.9, "model": "minecraft:item/bow/aegis_bow_pulling_2" }
-                ],
-                "fallback": "minecraft:item/bow/aegis_bow_pulling_0"
-              }
-            }
-          ],
-          "fallback": "minecraft:item/bow/aegis_bow"
-        }
-      },
-      {
-        "when": "Hercules Bow",
-        "model": {
-          "type": "minecraft:select",
-          "property": "minecraft:pulling",
-          "cases": [
-            {
-              "when": "true",
-              "model": {
-                "type": "minecraft:select",
-                "property": "minecraft:pull",
-                "cases": [
-                  { "when": 0.65, "model": "minecraft:item/bow/hercules_bow_pulling_1" },
-                  { "when": 0.9, "model": "minecraft:item/bow/hercules_bow_pulling_2" }
-                ],
-                "fallback": "minecraft:item/bow/hercules_bow_pulling_0"
-              }
-            }
-          ],
-          "fallback": "minecraft:item/bow/hercules_bow"
-        }
-      }
-    ],
-    "fallback": {
-      "type": "minecraft:select",
-      "property": "minecraft:pulling",
-      "cases": [
-        {
-          "when": "true",
-          "model": {
-            "type": "minecraft:select",
-            "property": "minecraft:pull",
-            "cases": [
-              { "when": 0.65, "model": "minecraft:item/bow_pulling_1" },
-              { "when": 0.9, "model": "minecraft:item/bow_pulling_2" }
-            ],
-            "fallback": "minecraft:item/bow_pulling_0"
-          }
-        }
-      ],
-      "fallback": "minecraft:item/bow"
-    }
-  }
+	"oversized_in_gui": true,
+	"model": {
+		"type": "condition",
+		"property": "using_item",
+		"on_false": {
+			"type": "select",
+			"property": "component",
+			"component": "custom_name",
+			"cases": [
+				{
+					"when": "Aegis Bow",
+					"model": {
+						"type": "model",
+						"model": "item/bow/aegis_bow"
+					}
+				},
+				{
+					"when": "Hercules Bow",
+					"model": {
+						"type": "model",
+						"model": "item/bow/hercules_bow"
+					}
+				}
+			],
+			"fallback": {
+				"type": "model",
+				"model": "item/bow"
+			}
+		},
+		"on_true": {
+			"type": "range_dispatch",
+			"property": "use_duration",
+			"scale": 0.05,
+			"entries": [
+				{
+					"threshold": 0.65,
+					"model": {
+						"type": "select",
+						"property": "component",
+						"component": "custom_name",
+						"cases": [
+							{
+								"when": "Aegis Bow",
+								"model": {
+									"type": "model",
+									"model": "item/bow/aegis_bow_pulling_1"
+								}
+							},
+							{
+								"when": "Hercules Bow",
+								"model": {
+									"type": "model",
+									"model": "item/bow/hercules_bow_pulling_1"
+								}
+							}
+						],
+						"fallback": {
+							"type": "model",
+							"model": "item/bow_pulling_1"
+						}
+					}
+				},
+				{
+					"threshold": 0.9,
+					"model": {
+						"type": "select",
+						"property": "component",
+						"component": "custom_name",
+						"cases": [
+							{
+								"when": "Aegis Bow",
+								"model": {
+									"type": "model",
+									"model": "item/bow/aegis_bow_pulling_2"
+								}
+							},
+							{
+								"when": "Hercules Bow",
+								"model": {
+									"type": "model",
+									"model": "item/bow/hercules_bow_pulling_2"
+								}
+							}
+						],
+						"fallback": {
+							"type": "model",
+							"model": "item/bow_pulling_2"
+						}
+					}
+				}
+			],
+			"fallback": {
+				"type": "select",
+				"property": "component",
+				"component": "custom_name",
+				"cases": [
+					{
+						"when": "Aegis Bow",
+						"model": {
+							"type": "model",
+							"model": "item/bow/aegis_bow_pulling_0"
+						}
+					},
+					{
+						"when": "Hercules Bow",
+						"model": {
+							"type": "model",
+							"model": "item/bow/hercules_bow_pulling_0"
+						}
+					}
+				],
+				"fallback": {
+					"type": "model",
+					"model": "item/bow_pulling_0"
+				}
+			}
+		}
+	}
 }

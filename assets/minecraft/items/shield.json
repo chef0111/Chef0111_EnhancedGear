@@ -1,27 +1,69 @@
 {
-  "model": {
-    "type": "minecraft:select",
-    "property": "minecraft:custom_name",
-    "cases": [
-      {
-        "when": "Divine Xuanwu Shield",
-        "model": {
-          "type": "minecraft:select",
-          "property": "minecraft:using",
-          "cases": [
-            { "when": "true", "model": "minecraft:item/shield/xuanwu_shield_blocking" }
-          ],
-          "fallback": "minecraft:item/shield/xuanwu_shield"
-        }
-      }
-    ],
-    "fallback": {
-      "type": "minecraft:select",
-      "property": "minecraft:using",
-      "cases": [
-        { "when": "true", "model": "minecraft:item/shield_blocking" }
-      ],
-      "fallback": "minecraft:item/shield"
-    }
-  }
+	"oversized_in_gui": true,
+	"model": {
+		"type": "condition",
+		"property": "using_item",
+		"on_false": {
+			"type": "select",
+			"base": "item/shield/shield",
+			"model": {
+				"type": "shield"
+			},
+			"property": "component",
+			"component": "custom_name",
+			"cases": [
+				{
+					"when": "Divine Xuanwu Shield",
+					"model": {
+						"type": "model",
+						"model": "item/shield/xuanwu_shield"
+					}
+				}
+			],
+			"fallback": {
+				"transformation": {
+					"left_rotation": [0, 0, 0, 1],
+					"right_rotation": [0, 0, 0, 1],
+					"scale": [1, -1, -1],
+					"translation": [0, 0, 0]
+				},
+				"type": "special",
+				"model": {
+					"type": "shield"
+				},
+				"base": "item/shield"
+			}
+		},
+		"on_true": {
+			"type": "select",
+			"base": "item/shield/shield",
+			"model": {
+				"type": "shield"
+			},
+			"property": "component",
+			"component": "custom_name",
+			"cases": [
+				{
+					"when": "Divine Xuanwu Shield",
+					"model": {
+						"type": "model",
+						"model": "item/shield/xuanwu_shield_blocking"
+					}
+				}
+			],
+			"fallback": {
+				"transformation": {
+					"left_rotation": [0, 0, 0, 1],
+					"right_rotation": [0, 0, 0, 1],
+					"scale": [1, -1, -1],
+					"translation": [0, 0, 0]
+				},
+				"type": "special",
+				"model": {
+					"type": "shield"
+				},
+				"base": "item/shield_blocking"
+			}
+		}
+	}
 }
