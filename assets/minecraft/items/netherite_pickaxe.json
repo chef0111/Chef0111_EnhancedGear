@@ -1,0 +1,21 @@
+{
+  "model": {
+    "type": "minecraft:select",
+    "property": "minecraft:component",
+    "component": "minecraft:custom_name",
+    "cases": [
+      {
+        "when": "Ezio's Pick",
+        "model": { "type": "minecraft:model", "model": "minecraft:item/ezio_pickaxe" }
+	    },
+      {
+        "when": "Chaebol Pickaxe",
+        "model": { "type": "minecraft:model", "model": "minecraft:item/pickaxe" }
+	    }
+    ],
+    "fallback": {
+      "type": "minecraft:model",
+      "model": "minecraft:item/netherite_pickaxe"
+    }
+  }
+}

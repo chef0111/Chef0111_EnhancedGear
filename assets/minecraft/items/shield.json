@@ -1,0 +1,27 @@
+{
+  "model": {
+    "type": "minecraft:select",
+    "property": "minecraft:custom_name",
+    "cases": [
+      {
+        "when": "Divine Xuanwu Shield",
+        "model": {
+          "type": "minecraft:select",
+          "property": "minecraft:using",
+          "cases": [
+            { "when": "true", "model": "minecraft:item/shield/xuanwu_shield_blocking" }
+          ],
+          "fallback": "minecraft:item/shield/xuanwu_shield"
+        }
+      }
+    ],
+    "fallback": {
+      "type": "minecraft:select",
+      "property": "minecraft:using",
+      "cases": [
+        { "when": "true", "model": "minecraft:item/shield_blocking" }
+      ],
+      "fallback": "minecraft:item/shield"
+    }
+  }
+}

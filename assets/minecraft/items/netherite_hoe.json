@@ -1,0 +1,17 @@
+{
+  "model": {
+    "type": "minecraft:select",
+    "property": "minecraft:component",
+    "component": "minecraft:custom_name",
+    "cases": [
+      {
+        "when": "Scythe of Eden",
+        "model": { "type": "minecraft:model", "model": "minecraft:item/scythe" }
+	    }
+    ],
+    "fallback": {
+      "type": "minecraft:model",
+      "model": "minecraft:item/netherite_hoe"
+    }
+  }
+}

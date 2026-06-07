@@ -1,0 +1,71 @@
+{
+  "model": {
+    "type": "minecraft:select",
+    "property": "minecraft:custom_name",
+    "cases": [
+      {
+        "when": "Aegis Bow",
+        "model": {
+          "type": "minecraft:select",
+          "property": "minecraft:pulling",
+          "cases": [
+            {
+              "when": "true",
+              "model": {
+                "type": "minecraft:select",
+                "property": "minecraft:pull",
+                "cases": [
+                  { "when": 0.65, "model": "minecraft:item/bow/aegis_bow_pulling_1" },
+                  { "when": 0.9, "model": "minecraft:item/bow/aegis_bow_pulling_2" }
+                ],
+                "fallback": "minecraft:item/bow/aegis_bow_pulling_0"
+              }
+            }
+          ],
+          "fallback": "minecraft:item/bow/aegis_bow"
+        }
+      },
+      {
+        "when": "Hercules Bow",
+        "model": {
+          "type": "minecraft:select",
+          "property": "minecraft:pulling",
+          "cases": [
+            {
+              "when": "true",
+              "model": {
+                "type": "minecraft:select",
+                "property": "minecraft:pull",
+                "cases": [
+                  { "when": 0.65, "model": "minecraft:item/bow/hercules_bow_pulling_1" },
+                  { "when": 0.9, "model": "minecraft:item/bow/hercules_bow_pulling_2" }
+                ],
+                "fallback": "minecraft:item/bow/hercules_bow_pulling_0"
+              }
+            }
+          ],
+          "fallback": "minecraft:item/bow/hercules_bow"
+        }
+      }
+    ],
+    "fallback": {
+      "type": "minecraft:select",
+      "property": "minecraft:pulling",
+      "cases": [
+        {
+          "when": "true",
+          "model": {
+            "type": "minecraft:select",
+            "property": "minecraft:pull",
+            "cases": [
+              { "when": 0.65, "model": "minecraft:item/bow_pulling_1" },
+              { "when": 0.9, "model": "minecraft:item/bow_pulling_2" }
+            ],
+            "fallback": "minecraft:item/bow_pulling_0"
+          }
+        }
+      ],
+      "fallback": "minecraft:item/bow"
+    }
+  }
+}

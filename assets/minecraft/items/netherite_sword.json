@@ -1,0 +1,21 @@
+{
+  "model": {
+    "type": "minecraft:select",
+    "property": "minecraft:component",
+    "component": "minecraft:custom_name",
+    "cases": [
+      {
+        "when": "Dragon Saber",
+        "model": { "type": "minecraft:model", "model": "minecraft:item/dragon_saber" }
+	    },
+	    {
+        "when": "The Creation Ender",
+        "model": { "type": "minecraft:model", "model": "minecraft:item/ender_sword" }
+	    }
+    ],
+    "fallback": {
+      "type": "minecraft:model",
+      "model": "minecraft:item/netherite_sword"
+    }
+  }
+}

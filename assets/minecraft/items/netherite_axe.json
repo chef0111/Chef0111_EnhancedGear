@@ -1,0 +1,21 @@
+{
+  "model": {
+    "type": "minecraft:select",
+    "property": "minecraft:component",
+    "component": "minecraft:custom_name",
+    "cases": [
+      {
+        "when": "Axecalibur",
+        "model": { "type": "minecraft:model", "model": "minecraft:item/axecalibur" }
+	    },
+	    {
+        "when": "Stormbreaker",
+        "model": { "type": "minecraft:model", "model": "minecraft:item/stormbreaker" }
+	    }
+    ],
+    "fallback": {
+      "type": "minecraft:model",
+      "model": "minecraft:item/netherite_axe"
+    }
+  }
+}
