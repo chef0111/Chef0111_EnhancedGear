@@ -1,0 +1,21 @@
+{
+    id: "enchantmentOutline",
+    version: 13,
+    capabilities: ["FileFilter", "DirFilter", "DirFilterAdditive"],
+    conf: {
+            glintColor: ["purple", "blue", "green", "yellow", "orange", "red", "white", "rainbow", "black"],
+            armor: ["off"],
+            guiOutline: ["on", "off"],
+            compatibility : {
+                    tools: ["vanilla", "vtDiminishing", "alsMobWeapons", "maddox3d", "vtShortSwords"],
+                    carrotSword: ["vanilla", "carrot"],
+                    mace: ["vanilla", "vt3d", "rodgerRealisticMace3D", "maceBut3D", "windForgedHammer"],
+                    shields: ["vanilla", "vtLower", "freshAnimationsPlayer", "shieldBySide"],
+                    xPBottles: ["vanilla", "vtSplash", "als3DPotions"],
+                    goldenHelmet: ["vanilla", "vtCrown"],
+                    books: ["vanilla", "off", "evenBetterEnchants", "reCovered"],
+                    food: ["vanilla", "fresh", "theones", "vtSmallerUtilities", "vtIlmangoGapples"],
+                    endCrystals: ["vanilla", "off"]
+                    }
+    }
+}

@@ -1,0 +1,8 @@
+{
+    condition: "enchantmentOutline.compatibility.shields.vanilla",
+    fallbacks: [
+      "assets/minecraft/items/shield_vt_lower.json",
+      "assets/minecraft/items/shield_fa.json",
+      "assets/minecraft/items/shield_bs.json"
+    ]
+}
