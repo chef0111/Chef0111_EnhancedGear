@@ -1137,6 +1137,7 @@
 		{
 			"name": "emissive_1",
 			"origin": [12, 15, 0],
+			"scope": 0,
 			"color": 0,
 			"children": [
 				0,
