@@ -15,8 +15,17 @@
 						"ground"
 					],
 					"model": {
-						"type": "minecraft:model",
-						"model": "minecraft:item/trident"
+						"type": "minecraft:composite",
+						"models": [
+							{
+								"type": "minecraft:model",
+								"model": "minecraft:item/trident"
+							},
+							{
+								"type": "minecraft:model",
+								"model": "minecraft:item/tridents/enchanted_trident"
+							}
+						]
 					}
 				}
 			],
