@@ -1,0 +1,15 @@
+{
+  "model": {
+    "type": "minecraft:composite",
+    "models": [
+      {
+        "type": "minecraft:model",
+        "model": "minecraft:item/enchanted_book"
+      },
+      {
+        "type": "minecraft:model",
+        "model": "minecraft:item/misc_outlines/enchanted_book"
+      }
+    ]
+  }
+}
