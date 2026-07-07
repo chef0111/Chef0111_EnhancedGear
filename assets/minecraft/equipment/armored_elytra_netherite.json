@@ -1,0 +1,13 @@
+{
+  "layers": {
+    "humanoid": [
+      { "texture": "minecraft:netherite" }
+    ],
+    "wings": [
+      {
+        "texture": "minecraft:elytra",
+        "use_player_texture": true
+      }
+    ]
+  }
+}

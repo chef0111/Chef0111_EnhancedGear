@@ -57,7 +57,25 @@
         "minecraft:trims/entity/humanoid/flow",
         "minecraft:trims/entity/humanoid_leggings/flow",
         "minecraft:trims/entity/humanoid/bolt",
-        "minecraft:trims/entity/humanoid_leggings/bolt"
+        "minecraft:trims/entity/humanoid_leggings/bolt",
+        "minecraft:trims/entity/wings/sentry",
+        "minecraft:trims/entity/wings/dune",
+        "minecraft:trims/entity/wings/coast",
+        "minecraft:trims/entity/wings/wild",
+        "minecraft:trims/entity/wings/ward",
+        "minecraft:trims/entity/wings/eye",
+        "minecraft:trims/entity/wings/vex",
+        "minecraft:trims/entity/wings/tide",
+        "minecraft:trims/entity/wings/snout",
+        "minecraft:trims/entity/wings/rib",
+        "minecraft:trims/entity/wings/spire",
+        "minecraft:trims/entity/wings/wayfinder",
+        "minecraft:trims/entity/wings/shaper",
+        "minecraft:trims/entity/wings/silence",
+        "minecraft:trims/entity/wings/raiser",
+        "minecraft:trims/entity/wings/host",
+        "minecraft:trims/entity/wings/flow",
+        "minecraft:trims/entity/wings/bolt"
       ]
     }
   ]
