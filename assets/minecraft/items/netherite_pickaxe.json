@@ -9,7 +9,7 @@
         "model": { "type": "minecraft:model", "model": "minecraft:item/ezio_pickaxe" }
       },
       {
-        "when": "Chaebol Pickaxe",
+        "when": ["Chaebol Pickaxe", "Gentleman Pickaxe"],
         "model": { "type": "minecraft:model", "model": "minecraft:item/pickaxe" }
       }
     ],
