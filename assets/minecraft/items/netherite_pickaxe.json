@@ -23,7 +23,7 @@
         "models": [
           {
             "type": "minecraft:model",
-            "model": "minecraft:item/enchanted_pickaxe"
+            "model": "minecraft:item/enchanted_netherite_pickaxe"
           },
           {
             "type": "minecraft:model",
@@ -41,7 +41,7 @@
           "models": [
             {
               "type": "minecraft:model",
-              "model": "minecraft:item/enchanted_pickaxe"
+              "model": "minecraft:item/enchanted_netherite_pickaxe"
             },
             {
               "type": "minecraft:model",

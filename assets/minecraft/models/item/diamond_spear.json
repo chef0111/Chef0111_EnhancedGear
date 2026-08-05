@@ -1,0 +1,7 @@
+{
+	"parent": "minecraft:item/generated",
+	"credit": "Classic Tools Fusion texture",
+	"textures": {
+		"layer0": "item/diamond_spear"
+	}
+}

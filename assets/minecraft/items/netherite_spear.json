@@ -35,7 +35,7 @@
       {
         "model": {
           "type": "minecraft:model",
-          "model": "minecraft:item/enchanted_spear"
+          "model": "minecraft:item/enchanted_netherite_spear"
         },
         "when": [
           "gui",
@@ -47,7 +47,7 @@
     ],
     "fallback": {
       "type": "minecraft:model",
-      "model": "minecraft:item/enchanted_spear_in_hand"
+      "model": "minecraft:item/enchanted_netherite_spear_in_hand"
     },
     "property": "minecraft:display_context"
         }
@@ -89,7 +89,7 @@
       {
         "model": {
           "type": "minecraft:model",
-          "model": "minecraft:item/enchanted_spear"
+          "model": "minecraft:item/enchanted_netherite_spear"
         },
         "when": [
           "gui",
@@ -101,7 +101,7 @@
     ],
     "fallback": {
       "type": "minecraft:model",
-      "model": "minecraft:item/enchanted_spear_in_hand"
+      "model": "minecraft:item/enchanted_netherite_spear_in_hand"
     },
     "property": "minecraft:display_context"
         }

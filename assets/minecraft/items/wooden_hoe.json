@@ -9,7 +9,7 @@
       "models": [
         {
           "type": "minecraft:model",
-          "model": "minecraft:item/enchanted_hoe"
+          "model": "minecraft:item/enchanted_wooden_hoe"
         },
         {
           "type": "minecraft:model",
@@ -27,7 +27,7 @@
         "models": [
           {
             "type": "minecraft:model",
-            "model": "minecraft:item/enchanted_hoe"
+            "model": "minecraft:item/enchanted_wooden_hoe"
           },
           {
             "type": "minecraft:model",

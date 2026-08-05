@@ -1,0 +1,7 @@
+{
+	"parent": "minecraft:item/handheld",
+	"credit": "Classic Tools Fusion texture",
+	"textures": {
+		"layer0": "item/copper_spear_in_hand"
+	}
+}

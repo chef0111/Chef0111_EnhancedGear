@@ -19,7 +19,7 @@
         "models": [
           {
             "type": "minecraft:model",
-            "model": "minecraft:item/enchanted_hoe"
+            "model": "minecraft:item/enchanted_netherite_hoe"
           },
           {
             "type": "minecraft:model",
@@ -37,7 +37,7 @@
           "models": [
             {
               "type": "minecraft:model",
-              "model": "minecraft:item/enchanted_hoe"
+              "model": "minecraft:item/enchanted_netherite_hoe"
             },
             {
               "type": "minecraft:model",
