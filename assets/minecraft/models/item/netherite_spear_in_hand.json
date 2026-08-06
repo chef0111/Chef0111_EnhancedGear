@@ -1,5 +1,6 @@
 {
 	"parent": "minecraft:item/handheld",
+	"gui_light": "front",
 	"credit": "Classic Tools Fusion texture",
 	"textures": {
 		"layer0": "item/netherite_spear_in_hand"

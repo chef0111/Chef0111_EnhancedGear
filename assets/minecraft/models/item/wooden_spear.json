@@ -1,5 +1,6 @@
 {
 	"parent": "minecraft:item/generated",
+	"gui_light": "front",
 	"credit": "Classic Tools Fusion texture",
 	"textures": {
 		"layer0": "item/wooden_spear"

@@ -1,0 +1,489 @@
+#!/usr/bin/env python3
+"""Generate Classic-Tools-matched 3D defaults + enchantment outline models for vanilla tools."""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+from PIL import Image
+
+ROOT = Path(__file__).resolve().parents[1]
+TEX_DIR = ROOT / "assets" / "minecraft" / "textures" / "item"
+MODELS = ROOT / "assets" / "minecraft" / "models" / "item"
+DEFAULTS = MODELS / "defaults"
+NO_GUI = MODELS / "no_gui_outline"
+ITEMS = ROOT / "assets" / "minecraft" / "items"
+
+MATERIALS = ["wooden", "stone", "iron", "golden", "copper", "diamond", "netherite"]
+TOOLS_3D = ["sword", "pickaxe", "axe", "shovel", "hoe"]
+ALL_TOOLS = TOOLS_3D + ["spear"]
+
+TOOL_TEX_KEY = {
+    "sword": "sword",
+    "pickaxe": "pickaxe",
+    "axe": "axe",
+    "shovel": "shovel",
+    "hoe": "hoe",
+}
+
+TOOL_DISPLAY_PARENT = {
+    "sword": "item/sword_display",
+    "pickaxe": "item/pickaxe_display",
+    "axe": "item/axe_display",
+    "shovel": "item/shovel_display",
+    "hoe": "item/hoe_display",
+}
+
+HANDHELD_DISPLAY = {
+    "thirdperson_righthand": {
+        "rotation": [0, -90, 55],
+        "translation": [0, 4, 0.5],
+        "scale": [0.85, 0.85, 0.85],
+    },
+    "thirdperson_lefthand": {
+        "rotation": [0, 90, -55],
+        "translation": [0, 4, 0.5],
+        "scale": [0.85, 0.85, 0.85],
+    },
+    "firstperson_righthand": {
+        "rotation": [0, -90, 25],
+        "translation": [1.13, 3.2, 1.13],
+        "scale": [0.68, 0.68, 0.68],
+    },
+    "firstperson_lefthand": {
+        "rotation": [0, 90, -25],
+        "translation": [1.13, 3.2, 1.13],
+        "scale": [0.68, 0.68, 0.68],
+    },
+    "ground": {"translation": [0, 3, 0], "scale": [0.5, 0.5, 0.5]},
+    "gui": {"scale": [1.05, 1.05, 1]},
+    "head": {"rotation": [0, 180, 0], "translation": [0, 13, 7]},
+    "fixed": {"rotation": [0, 180, 0], "scale": [1.02, 1.02, 1.02]},
+}
+
+NO_GUI_DISPLAY = {
+    **HANDHELD_DISPLAY,
+    "gui": {"scale": [1, 1, 1]},
+}
+
+NEIGHBORS_8 = [
+    (1, 0),
+    (-1, 0),
+    (0, 1),
+    (0, -1),
+    (1, 1),
+    (1, -1),
+    (-1, 1),
+    (-1, -1),
+]
+
+
+def load_opaque(path: Path) -> tuple[int, int, set[tuple[int, int]]]:
+    im = Image.open(path).convert("RGBA")
+    w, h = im.size
+    px = im.load()
+    opaque: set[tuple[int, int]] = set()
+    for y in range(h):
+        for x in range(w):
+            if px[x, y][3] > 0:
+                opaque.add((x, y))
+    return w, h, opaque
+
+
+def outline_cells(opaque: set[tuple[int, int]], w: int, h: int) -> set[tuple[int, int]]:
+    """1px outline ring around opaque texels (8-neighbor), allowing 1px outside bounds."""
+    out: set[tuple[int, int]] = set()
+    for x, y in opaque:
+        for dx, dy in NEIGHBORS_8:
+            n = (x + dx, y + dy)
+            if n not in opaque and -1 <= n[0] <= w and -1 <= n[1] <= h:
+                out.add(n)
+    return out
+
+
+def merge_runs(cells: set[tuple[int, int]]) -> list[tuple[int, int, int, int]]:
+    """Merge horizontally adjacent cells into (x0, y, x1_exclusive, y+1) boxes."""
+    by_row: dict[int, list[int]] = {}
+    for x, y in cells:
+        by_row.setdefault(y, []).append(x)
+    boxes: list[tuple[int, int, int, int]] = []
+    for y, xs in sorted(by_row.items()):
+        xs = sorted(set(xs))
+        start = xs[0]
+        prev = xs[0]
+        for x in xs[1:]:
+            if x == prev + 1:
+                prev = x
+                continue
+            boxes.append((start, y, prev + 1, y + 1))
+            start = prev = x
+        boxes.append((start, y, prev + 1, y + 1))
+    return boxes
+
+
+def tex_uv(x0: int, y0: int, x1: int, y1: int, w: int = 16, h: int = 16) -> list[float]:
+    """Clamp UV sample into 0..16 atlas space for glow / item textures."""
+    u0 = max(0, min(w, x0))
+    v0 = max(0, min(h, y0))
+    u1 = max(0, min(w, x1))
+    v1 = max(0, min(h, y1))
+    if u0 == u1:
+        u1 = min(w, u0 + 1)
+    if v0 == v1:
+        v1 = min(h, v0 + 1)
+    return [float(u0), float(v0), float(u1), float(v1)]
+
+
+# Chef original outline pad for 1x1 cubes: [n.1, m.9] -> [n+1.1, m+0.9]
+# Body must use the same XY pad so outline and tool stay locked together.
+PAD_X = 0.1
+PAD_Y = -0.1
+
+
+def body_elements(opaque: set[tuple[int, int]], tex_key: str, w: int, h: int) -> list[dict]:
+    boxes = merge_runs(opaque)
+    elements = []
+    z0, z1 = 7.5, 8.5
+    for i, (x0, y0, x1, y1) in enumerate(boxes):
+        # texture y grows down; model y grows up
+        my0 = h - y1
+        my1 = h - y0
+        uv = tex_uv(x0, y0, x1, y1, w, h)
+        north_uv = [float(uv[2]), float(uv[1]), float(uv[0]), float(uv[3])]
+        elements.append(
+            {
+                "name": f"{tex_key}_{i}",
+                "from": [float(x0) + PAD_X, float(my0) + PAD_Y, z0],
+                "to": [float(x1) + PAD_X, float(my1) + PAD_Y, z1],
+                "faces": {
+                    "north": {"uv": north_uv, "texture": f"#{tex_key}"},
+                    "east": {
+                        "uv": tex_uv(x1 - 1, y0, x1, y1, w, h),
+                        "texture": f"#{tex_key}",
+                    },
+                    "south": {"uv": uv, "texture": f"#{tex_key}"},
+                    "west": {
+                        "uv": tex_uv(x0, y0, x0 + 1, y1, w, h),
+                        "texture": f"#{tex_key}",
+                    },
+                    "up": {
+                        "uv": tex_uv(x0, y0, x1, y0 + 1, w, h),
+                        "texture": f"#{tex_key}",
+                    },
+                    "down": {
+                        "uv": tex_uv(x0, y1 - 1, x1, y1, w, h),
+                        "texture": f"#{tex_key}",
+                    },
+                },
+            }
+        )
+    return elements
+
+
+def glow_elements(
+    opaque: set[tuple[int, int]],
+    w: int,
+    h: int,
+    glow: str = "glow",
+) -> list[dict]:
+    """Full-item glow mesh matching original enchanted_sword / enchanted_axe.
+
+    Exact original pattern (one cube per opaque texel):
+    - Size 1x1 with pad [tx+0.1, my-0.1] -> [tx+1.1, my+0.9]
+    - north/south always use the solid glow UV
+    - east/west/up/down use glow UV when open air, or UV [0,0,1,1]
+      when that side touches another opaque cube
+    - z 8.6 -> 7.4, light_emission 15
+
+    Body models use the same XY pad so the outline is not shifted relative
+    to the tool in first-person / GUI.
+    """
+    elements: list[dict] = []
+    z_front, z_back = 8.6, 7.4
+    hidden = {"uv": [0, 0, 1, 1], "texture": f"#{glow}"}
+
+    for tx, ty in sorted(opaque, key=lambda p: (p[1], p[0])):
+        my = h - ty - 1
+        fx0 = float(tx) + PAD_X
+        fx1 = float(tx) + 1.0 + PAD_X
+        fy0 = float(my) + PAD_Y
+        fy1 = float(my) + 1.0 + PAD_Y
+        uv = tex_uv(tx, ty, tx + 1, ty + 1, w, h)
+        visible = {"uv": uv, "texture": f"#{glow}"}
+
+        elements.append(
+            {
+                "from": [fx0, fy0, z_front],
+                "to": [fx1, fy1, z_back],
+                "light_emission": 15,
+                "rotation": {
+                    "angle": 0,
+                    "axis": "y",
+                    "origin": [float(tx), float(my), 5.7],
+                },
+                "faces": {
+                    "north": visible,
+                    "south": visible,
+                    "east": hidden if (tx + 1, ty) in opaque else visible,
+                    "west": hidden if (tx - 1, ty) in opaque else visible,
+                    "up": hidden if (tx, ty - 1) in opaque else visible,
+                    "down": hidden if (tx, ty + 1) in opaque else visible,
+                },
+            }
+        )
+    return elements
+
+
+def write_json(path: Path, data: dict) -> None:
+    """Write Blockbench-like compact JSON (arrays inline)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    def fmt(obj, indent: int = 0) -> str:
+        sp = "\t" * indent
+        sp1 = "\t" * (indent + 1)
+        if isinstance(obj, dict):
+            if not obj:
+                return "{}"
+            lines = ["{"]
+            items = list(obj.items())
+            for i, (k, v) in enumerate(items):
+                comma = "," if i < len(items) - 1 else ""
+                lines.append(f'{sp1}"{k}": {fmt(v, indent + 1)}{comma}')
+            lines.append(f"{sp}}}")
+            return "\n".join(lines)
+        if isinstance(obj, list):
+            # Keep short numeric / mixed face-like arrays on one line
+            if not obj:
+                return "[]"
+            if all(isinstance(x, (int, float, str)) and not isinstance(x, bool) for x in obj):
+                inner = ", ".join(json.dumps(x) for x in obj)
+                return f"[{inner}]"
+            lines = ["["]
+            for i, v in enumerate(obj):
+                comma = "," if i < len(obj) - 1 else ""
+                lines.append(f"{sp1}{fmt(v, indent + 1)}{comma}")
+            lines.append(f"{sp}]")
+            return "\n".join(lines)
+        return json.dumps(obj)
+
+    path.write_text(fmt(data) + "\n", encoding="utf-8")
+
+
+def write_rpo(model_path: Path, no_gui_rel: str) -> None:
+    rpo = model_path.with_suffix(".json.rpo")
+    rpo.write_text(
+        "{\n"
+        '    condition: "enchantmentOutline.guiOutline.on",\n'
+        "    fallbacks: [\n"
+        f'      "{no_gui_rel}"\n'
+        "    ]\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+
+def build_default_model(item: str, tool: str, opaque: set[tuple[int, int]], w: int, h: int) -> dict:
+    key = TOOL_TEX_KEY[tool]
+    return {
+        "credit": "Generated from Classic Tools Fusion silhouette",
+        "parent": TOOL_DISPLAY_PARENT[tool],
+        "gui_light": "front",
+        "textures": {
+            key: f"item/{item}",
+            "particle": f"item/{item}",
+        },
+        "elements": body_elements(opaque, key, w, h),
+    }
+
+
+def build_outline_model(
+    opaque: set[tuple[int, int]],
+    w: int,
+    h: int,
+    display: dict,
+    glow_key: str = "glow",
+) -> dict:
+    elements = glow_elements(opaque, w, h, glow_key)
+    return {
+        "parent": "minecraft:item/handheld",
+        "gui_light": "front",
+        "credit": "Generated from Classic Tools Fusion silhouette",
+        "textures": {
+            glow_key: "item/enchanted_tool_overlays/enchantment_outline",
+            "particle": "item/enchanted_tool_overlays/enchantment_outline",
+        },
+        "elements": elements,
+        "display": display,
+        "groups": [
+            {
+                "name": "emissive_1",
+                "origin": [12, 15, 0],
+                "color": 0,
+                "children": list(range(len(elements))),
+            }
+        ],
+    }
+
+
+def build_flat_spear_model(item: str) -> dict:
+    return {
+        "parent": "minecraft:item/generated",
+        "gui_light": "front",
+        "credit": "Classic Tools Fusion texture",
+        "textures": {"layer0": f"item/{item}"},
+    }
+
+
+def build_spear_in_hand_model(item: str) -> dict:
+    # Use oversized handheld-style flat model; vanilla parent may vary by version.
+    return {
+        "parent": "minecraft:item/handheld",
+        "gui_light": "front",
+        "credit": "Classic Tools Fusion texture",
+        "textures": {"layer0": f"item/{item}"},
+    }
+
+
+def generate_models() -> list[str]:
+    written: list[str] = []
+    DEFAULTS.mkdir(parents=True, exist_ok=True)
+    NO_GUI.mkdir(parents=True, exist_ok=True)
+
+    for mat in MATERIALS:
+        for tool in TOOLS_3D:
+            item = f"{mat}_{tool}"
+            tex = TEX_DIR / f"{item}.png"
+            if not tex.exists():
+                raise FileNotFoundError(tex)
+            w, h, opaque = load_opaque(tex)
+
+            default_path = DEFAULTS / f"{item}.json"
+            write_json(default_path, build_default_model(item, tool, opaque, w, h))
+            written.append(str(default_path.relative_to(ROOT)))
+
+            outline = build_outline_model(opaque, w, h, HANDHELD_DISPLAY)
+            outline_path = MODELS / f"enchanted_{item}.json"
+            write_json(outline_path, outline)
+            written.append(str(outline_path.relative_to(ROOT)))
+
+            no_gui = build_outline_model(opaque, w, h, NO_GUI_DISPLAY)
+            no_gui_path = NO_GUI / f"enchanted_{item}.json"
+            write_json(no_gui_path, no_gui)
+            written.append(str(no_gui_path.relative_to(ROOT)))
+            write_rpo(
+                outline_path,
+                f"assets/minecraft/models/item/no_gui_outline/enchanted_{item}.json",
+            )
+
+        # Spears: body models + GUI/in-hand outlines
+        spear = f"{mat}_spear"
+        spear_hand = f"{mat}_spear_in_hand"
+        spear_tex = TEX_DIR / f"{spear}.png"
+        hand_tex_path = TEX_DIR / f"{spear_hand}.png"
+        hand_tex_name = spear_hand if hand_tex_path.exists() else spear
+
+        write_json(MODELS / f"{spear}.json", build_flat_spear_model(spear))
+        written.append(f"assets/minecraft/models/item/{spear}.json")
+        write_json(MODELS / f"{spear_hand}.json", build_spear_in_hand_model(hand_tex_name))
+        written.append(f"assets/minecraft/models/item/{spear_hand}.json")
+
+        for item, tex_path in [
+            (spear, spear_tex),
+            (spear_hand, TEX_DIR / f"{hand_tex_name}.png"),
+        ]:
+            w, h, opaque = load_opaque(tex_path)
+            outline = build_outline_model(opaque, w, h, HANDHELD_DISPLAY)
+            outline_path = MODELS / f"enchanted_{item}.json"
+            write_json(outline_path, outline)
+            written.append(str(outline_path.relative_to(ROOT)))
+
+            no_gui = build_outline_model(opaque, w, h, NO_GUI_DISPLAY)
+            no_gui_path = NO_GUI / f"enchanted_{item}.json"
+            write_json(no_gui_path, no_gui)
+            written.append(str(no_gui_path.relative_to(ROOT)))
+            write_rpo(
+                outline_path,
+                f"assets/minecraft/models/item/no_gui_outline/enchanted_{item}.json",
+            )
+
+    return written
+
+
+def tool_type_from_item(item_id: str) -> str | None:
+    for tool in ALL_TOOLS:
+        if item_id.endswith(f"_{tool}"):
+            return tool
+    return None
+
+
+def retarget_items() -> list[str]:
+    """Replace shared enchanted_<tool> refs with enchanted_<material_tool> in vanilla items only."""
+    changed: list[str] = []
+    for mat in MATERIALS:
+        for tool in ALL_TOOLS:
+            item = f"{mat}_{tool}"
+            path = ITEMS / f"{item}.json"
+            if not path.exists():
+                print(f"skip missing items file: {path.name}")
+                continue
+            text = path.read_text(encoding="utf-8")
+            original = text
+
+            if tool == "spear":
+                text = text.replace(
+                    '"model": "minecraft:item/enchanted_spear"',
+                    f'"model": "minecraft:item/enchanted_{mat}_spear"',
+                )
+                text = text.replace(
+                    '"model": "minecraft:item/enchanted_spear_in_hand"',
+                    f'"model": "minecraft:item/enchanted_{mat}_spear_in_hand"',
+                )
+            else:
+                # Only replace shared type outlines, not already-material-specific ones
+                pattern = rf'("model"\s*:\s*")minecraft:item/enchanted_{tool}(")'
+                text = re.sub(pattern, rf"\1minecraft:item/enchanted_{item}\2", text)
+
+            if text != original:
+                path.write_text(text, encoding="utf-8")
+                changed.append(str(path.relative_to(ROOT)))
+    return changed
+
+
+def verify_customs_untouched() -> None:
+    customs = [
+        MODELS / "dragon_saber.json",
+        MODELS / "ezio_pickaxe.json",
+        MODELS / "ender_sword.json",
+        MODELS / "enchanted_sword.json",  # shared outline kept for diminishing/custom
+        MODELS / "enchanted_pickaxe.json",
+        MODELS / "enchanted_axe.json",
+        MODELS / "enchanted_shovel.json",
+        MODELS / "enchanted_hoe.json",
+        MODELS / "enchanted_spear.json",
+    ]
+    for p in customs:
+        if not p.exists():
+            raise FileNotFoundError(f"Expected custom/shared file missing: {p}")
+    # netherite_sword should still have Dragon Saber case
+    ns = (ITEMS / "netherite_sword.json").read_text(encoding="utf-8")
+    assert "Dragon Saber" in ns and "dragon_saber" in ns
+    assert "enchanted_netherite_sword" in ns
+    assert '"minecraft:item/enchanted_sword"' not in ns.replace("enchanted_netherite_sword", "")
+    # crude check: shared enchanted_sword should not remain in fallback
+    if re.search(r'minecraft:item/enchanted_sword"', ns):
+        raise AssertionError("netherite_sword still references shared enchanted_sword")
+
+
+def main() -> None:
+    written = generate_models()
+    changed = retarget_items()
+    verify_customs_untouched()
+    print(f"Wrote {len(written)} model files")
+    print(f"Retargeted {len(changed)} item definitions")
+    print("Custom/shared assets preserved.")
+
+
+if __name__ == "__main__":
+    main()
