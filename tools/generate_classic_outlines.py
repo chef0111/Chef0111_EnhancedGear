@@ -255,13 +255,110 @@ def _with_xy(
     y1: float,
 ) -> dict:
     fr, to = element["from"], element["to"]
+    # Deep-copy faces so later per-fragment occlusion hides do not alias.
+    faces = {
+        name: {"uv": list(face["uv"]), "texture": face["texture"]}
+        for name, face in element["faces"].items()
+    }
     return {
         "from": [round(x0, 3), round(y0, 3), fr[2]],
         "to": [round(x1, 3), round(y1, 3), to[2]],
         "light_emission": element["light_emission"],
         "rotation": element["rotation"],
-        "faces": element["faces"],
+        "faces": faces,
     }
+
+
+def _merge_intervals(
+    intervals: list[tuple[float, float]],
+    eps: float = 1e-6,
+) -> list[tuple[float, float]]:
+    if not intervals:
+        return []
+    ordered = sorted(intervals)
+    merged = [ordered[0]]
+    for lo, hi in ordered[1:]:
+        mlo, mhi = merged[-1]
+        if lo <= mhi + eps:
+            merged[-1] = (mlo, max(mhi, hi))
+        else:
+            merged.append((lo, hi))
+    return merged
+
+
+def _interval_fully_covered(
+    lo: float,
+    hi: float,
+    parts: list[tuple[float, float]],
+    eps: float = 1e-4,
+) -> bool:
+    """True if [lo, hi] is covered by the union of parts."""
+    if hi - lo <= eps:
+        return True
+    cursor = lo
+    for plo, phi in _merge_intervals(parts, eps):
+        if phi <= cursor + eps:
+            continue
+        if plo > cursor + eps:
+            return False
+        cursor = max(cursor, phi)
+        if cursor >= hi - eps:
+            return True
+    return cursor >= hi - eps
+
+
+def hide_internal_side_faces(elements: list[dict], glow: str = "glow") -> list[dict]:
+    """Hide east/west/up/down faces that are fully flush-covered by neighbors.
+
+    North/south stay textured (item front/back). Matches Chef's [0,0,1,1] hide
+    marker for internal walls, including L-split cut planes.
+    """
+    hidden = {"uv": [0, 0, 1, 1], "texture": f"#{glow}"}
+    eps = 1e-4
+    rects = [_norm_xy(e) for e in elements]
+
+    for i, e in enumerate(elements):
+        x0, y0, x1, y1 = rects[i]
+        faces = e["faces"]
+
+        east_cov: list[tuple[float, float]] = []
+        west_cov: list[tuple[float, float]] = []
+        up_cov: list[tuple[float, float]] = []
+        down_cov: list[tuple[float, float]] = []
+
+        for j, o in enumerate(rects):
+            if i == j:
+                continue
+            ox0, oy0, ox1, oy1 = o
+            # Neighbor west flush to our east → covers our east face in Y.
+            if abs(ox0 - x1) <= eps:
+                lo, hi = max(y0, oy0), min(y1, oy1)
+                if hi - lo > eps:
+                    east_cov.append((lo, hi))
+            if abs(ox1 - x0) <= eps:
+                lo, hi = max(y0, oy0), min(y1, oy1)
+                if hi - lo > eps:
+                    west_cov.append((lo, hi))
+            # Neighbor down flush to our up → covers our up face in X.
+            if abs(oy0 - y1) <= eps:
+                lo, hi = max(x0, ox0), min(x1, ox1)
+                if hi - lo > eps:
+                    up_cov.append((lo, hi))
+            if abs(oy1 - y0) <= eps:
+                lo, hi = max(x0, ox0), min(x1, ox1)
+                if hi - lo > eps:
+                    down_cov.append((lo, hi))
+
+        if _interval_fully_covered(y0, y1, east_cov, eps):
+            faces["east"] = dict(hidden)
+        if _interval_fully_covered(y0, y1, west_cov, eps):
+            faces["west"] = dict(hidden)
+        if _interval_fully_covered(x0, x1, up_cov, eps):
+            faces["up"] = dict(hidden)
+        if _interval_fully_covered(x0, x1, down_cov, eps):
+            faces["down"] = dict(hidden)
+
+    return elements
 
 
 def resolve_diagonal_kisses(
@@ -393,7 +490,10 @@ def glow_elements(
             }
         )
 
-    return resolve_diagonal_kisses(elements, ux, uy)
+    return hide_internal_side_faces(
+        resolve_diagonal_kisses(elements, ux, uy),
+        glow,
+    )
 
 
 def write_json(path: Path, data: dict) -> None:
