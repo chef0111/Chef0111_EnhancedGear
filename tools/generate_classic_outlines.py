@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Generate Classic-Tools 3D defaults + enchantment outlines for vanilla tools.
 
-Glow = exact 1x1 pad from latest commit, then +0.1 on every exterior side
-(wraps the silhouette thicker without interior overlaps). Body keeps the
-unwrapped 1x1 pad so FP/GUI stay locked; glow sticks out 0.1 on open edges.
-32x32 spear_in_hand geometry/UVs scale into the 0..16 model/atlas space.
+Glow = exact 1x1 pad from latest commit, then +0.1 on every exterior side.
+Diagonal staircase kisses are removed by L-splitting one cube so the union
+silhouette stays solid (no gaps, no double-coverage). Body keeps the unwrapped
+1x1 pad so FP/GUI stay locked. 32x32 spear_in_hand scales into 0..16 space.
 """
 
 from __future__ import annotations
@@ -145,7 +145,8 @@ def tex_uv(x0: int, y0: int, x1: int, y1: int, w: int = 16, h: int = 16) -> list
 # Exact 1x1 pad from Chef originals / latest commit:
 #   [tx+0.1, my-0.1] -> [tx+1.1, my+0.9]
 # Body keeps that pad. Glow wraps +THICKEN on every exterior side so the
-# silhouette outline reads 0.1 thicker without interior overlaps.
+# silhouette outline reads 0.1 thicker. Diagonal notch double-coverage is
+# then L-split away (union preserved — no ortho gaps, no corner kisses).
 PAD_X = 0.1
 PAD_Y = -0.1
 THICKEN = 0.1
@@ -210,6 +211,122 @@ def glow_uv(tx: int, ty: int, w: int, h: int) -> list[float]:
     return [float(gu), float(gv), float(gu + 1), float(gv + 1)]
 
 
+def _norm_xy(element: dict) -> tuple[float, float, float, float]:
+    fr, to = element["from"], element["to"]
+    return (
+        min(fr[0], to[0]),
+        min(fr[1], to[1]),
+        max(fr[0], to[0]),
+        max(fr[1], to[1]),
+    )
+
+
+def _aabb_subtract(
+    victim: tuple[float, float, float, float],
+    hole: tuple[float, float, float, float],
+    eps: float = 1e-9,
+) -> list[tuple[float, float, float, float]]:
+    """Axis-aligned rectangles covering victim \\ hole (union-preserving)."""
+    vx0, vy0, vx1, vy1 = victim
+    hx0 = max(hole[0], vx0)
+    hy0 = max(hole[1], vy0)
+    hx1 = min(hole[2], vx1)
+    hy1 = min(hole[3], vy1)
+    if hx1 - hx0 <= eps or hy1 - hy0 <= eps:
+        return [victim]
+
+    parts: list[tuple[float, float, float, float]] = []
+    if hy0 - vy0 > eps:
+        parts.append((vx0, vy0, vx1, hy0))
+    if vy1 - hy1 > eps:
+        parts.append((vx0, hy1, vx1, vy1))
+    if hx0 - vx0 > eps:
+        parts.append((vx0, hy0, hx0, hy1))
+    if vx1 - hx1 > eps:
+        parts.append((hx1, hy0, vx1, hy1))
+    return parts or [victim]
+
+
+def _with_xy(
+    element: dict,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+) -> dict:
+    fr, to = element["from"], element["to"]
+    return {
+        "from": [round(x0, 3), round(y0, 3), fr[2]],
+        "to": [round(x1, 3), round(y1, 3), to[2]],
+        "light_emission": element["light_emission"],
+        "rotation": element["rotation"],
+        "faces": element["faces"],
+    }
+
+
+def resolve_diagonal_kisses(
+    elements: list[dict],
+    ux: float,
+    uy: float,
+) -> list[dict]:
+    """Remove corner overlaps via L-split; keep silhouette union.
+
+    Keeper cube stays intact (owns the corner). Victim becomes 1–2 AABBs that
+    cover everything it covered except the intersection. Ortho flush planes are
+    untouched — only the overlapping region is reassigned to one owner.
+
+    Threshold is 2×THICKEN so cascading splits that leave 0.2×0.1 residuals
+    still get cleaned (plain 0.1×0.1 kisses are the common case).
+    """
+    # Allow up to two thicken steps of residual after prior splits.
+    max_kiss = 2.0 * THICKEN * min(ux, uy) + 1e-6
+    current = list(elements)
+
+    for _ in range(256):
+        rects = [_norm_xy(e) for e in current]
+        kisses: list[tuple[float, int, int, tuple[float, float, float, float]]] = []
+        for i, a in enumerate(rects):
+            for j in range(i + 1, len(rects)):
+                b = rects[j]
+                ox = min(a[2], b[2]) - max(a[0], b[0])
+                oy = min(a[3], b[3]) - max(a[1], b[1])
+                if ox <= 1e-9 or oy <= 1e-9:
+                    continue
+                if ox > max_kiss or oy > max_kiss:
+                    continue
+                hx0 = max(a[0], b[0])
+                hy0 = max(a[1], b[1])
+                hx1 = min(a[2], b[2])
+                hy1 = min(a[3], b[3])
+                area_i = (a[2] - a[0]) * (a[3] - a[1])
+                area_j = (b[2] - b[0]) * (b[3] - b[1])
+                # Prefer carving the smaller fragment so large rim cubes stay intact.
+                if area_j < area_i - 1e-12:
+                    victim_i, keeper_i = j, i
+                else:
+                    victim_i, keeper_i = i, j
+                kisses.append((ox * oy, keeper_i, victim_i, (hx0, hy0, hx1, hy1)))
+
+        if not kisses:
+            break
+
+        # Smallest overlap first (stable cleanup of thin residuals).
+        kisses.sort(key=lambda t: t[0])
+        _, _keeper, victim_i, hole = kisses[0]
+        victim = current[victim_i]
+        parts = _aabb_subtract(_norm_xy(victim), hole)
+        new_els = [
+            _with_xy(victim, x0, y0, x1, y1)
+            for x0, y0, x1, y1 in parts
+            if (x1 - x0) > 1e-9 and (y1 - y0) > 1e-9
+        ]
+        current = current[:victim_i] + new_els + current[victim_i + 1 :]
+    else:
+        raise RuntimeError("resolve_diagonal_kisses: did not converge")
+
+    return current
+
+
 def glow_elements(
     opaque: set[tuple[int, int]],
     w: int,
@@ -219,8 +336,11 @@ def glow_elements(
     """One cube per opaque texel: exact 1x1 pad, then +0.1 on exterior sides.
 
     Base (latest commit): [tx+0.1, my-0.1] -> [tx+1.1, my+0.9]
-    Wrap: expand each open side by THICKEN (0.1). Shared edges stay flush,
-    so adjacent cubes never overlap — only the silhouette rim grows thicker.
+    Wrap: expand each open side by THICKEN (0.1). Shared ortho edges stay flush.
+
+    Diagonal staircase corners would otherwise share a THICKEN×THICKEN kiss.
+    Those are L-split afterward so the union silhouette stays solid — same
+    exterior size as full wrap, without darker double-coverage.
 
     Body keeps the unwrapped 1x1 pad (same center / PAD), so FP/GUI do not
     shift; the glow simply sticks out 0.1 past the body on open edges.
@@ -234,8 +354,8 @@ def glow_elements(
         my = h - ty - 1
         open_w = (tx - 1, ty) not in opaque
         open_e = (tx + 1, ty) not in opaque
-        open_u = (tx, ty - 1) not in opaque  # model +Y
-        open_d = (tx, ty + 1) not in opaque  # model -Y
+        open_u = (tx, ty - 1) not in opaque
+        open_d = (tx, ty + 1) not in opaque
 
         fx0 = float(tx) + PAD_X - (THICKEN if open_w else 0.0)
         fx1 = float(tx) + 1.0 + PAD_X + (THICKEN if open_e else 0.0)
@@ -244,7 +364,6 @@ def glow_elements(
 
         uv = glow_uv(tx, ty, w, h)
         visible = {"uv": uv, "texture": f"#{glow}"}
-
         elements.append(
             {
                 "from": [
@@ -273,7 +392,8 @@ def glow_elements(
                 },
             }
         )
-    return elements
+
+    return resolve_diagonal_kisses(elements, ux, uy)
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -342,12 +462,13 @@ def build_outline_model(
     opaque: set[tuple[int, int]],
     w: int,
     h: int,
-    display: dict,
+    display: dict | None = None,
     glow_key: str = "glow",
+    parent: str = "minecraft:item/handheld",
 ) -> dict:
     elements = glow_elements(opaque, w, h, glow_key)
-    return {
-        "parent": "minecraft:item/handheld",
+    model: dict = {
+        "parent": parent,
         "gui_light": "front",
         "credit": CREDIT,
         "textures": {
@@ -355,7 +476,6 @@ def build_outline_model(
             "particle": "item/enchanted_tool_overlays/enchantment_outline",
         },
         "elements": elements,
-        "display": display,
         "groups": [
             {
                 "name": "emissive_1",
@@ -365,6 +485,10 @@ def build_outline_model(
             }
         ],
     }
+    # Omit display to inherit parent transforms (critical for spear_in_hand).
+    if display is not None:
+        model["display"] = display
+    return model
 
 
 def build_flat_spear_model(item: str) -> dict:
@@ -377,9 +501,9 @@ def build_flat_spear_model(item: str) -> dict:
 
 
 def build_spear_in_hand_model(item: str) -> dict:
-    # Use oversized handheld-style flat model; vanilla parent may vary by version.
+    # Vanilla spear pose lives on spear_in_hand — do not use handheld (sword) display.
     return {
-        "parent": "minecraft:item/handheld",
+        "parent": "minecraft:item/spear_in_hand",
         "gui_light": "front",
         "credit": "Classic Tools Fusion texture",
         "textures": {"layer0": f"item/{item}"},
@@ -429,17 +553,35 @@ def generate_models() -> list[str]:
         write_json(MODELS / f"{spear_hand}.json", build_spear_in_hand_model(hand_tex_name))
         written.append(f"assets/minecraft/models/item/{spear_hand}.json")
 
-        for item, tex_path in [
-            (spear, spear_tex),
-            (spear_hand, TEX_DIR / f"{hand_tex_name}.png"),
+        for item, tex_path, is_hand in [
+            (spear, spear_tex, False),
+            (spear_hand, TEX_DIR / f"{hand_tex_name}.png", True),
         ]:
             w, h, opaque = load_opaque(tex_path)
-            outline = build_outline_model(opaque, w, h, HANDHELD_DISPLAY)
+            if is_hand:
+                # Inherit vanilla spear_in_hand first/third-person pose.
+                outline = build_outline_model(
+                    opaque,
+                    w,
+                    h,
+                    display=None,
+                    parent="minecraft:item/spear_in_hand",
+                )
+                no_gui = build_outline_model(
+                    opaque,
+                    w,
+                    h,
+                    display=None,
+                    parent="minecraft:item/spear_in_hand",
+                )
+            else:
+                # GUI/ground/fixed only — handheld display is fine here.
+                outline = build_outline_model(opaque, w, h, HANDHELD_DISPLAY)
+                no_gui = build_outline_model(opaque, w, h, NO_GUI_DISPLAY)
             outline_path = MODELS / f"enchanted_{item}.json"
             write_json(outline_path, outline)
             written.append(str(outline_path.relative_to(ROOT)))
 
-            no_gui = build_outline_model(opaque, w, h, NO_GUI_DISPLAY)
             no_gui_path = NO_GUI / f"enchanted_{item}.json"
             write_json(no_gui_path, no_gui)
             written.append(str(no_gui_path.relative_to(ROOT)))

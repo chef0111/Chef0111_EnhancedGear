@@ -35,8 +35,9 @@ def check(model_stem: str, tex_name: str) -> list[str]:
         errs.append(f"{model_stem}: missing wrap credit ({credit!r})")
 
     els = data["elements"]
-    if len(els) != len(op):
-        errs.append(f"{model_stem}: els {len(els)} != opaque {len(op)}")
+    # L-split may add fragments, so count can exceed opaque texels.
+    if len(els) < len(op):
+        errs.append(f"{model_stem}: els {len(els)} < opaque {len(op)}")
 
     by_cell: dict[tuple[int, int], dict] = {}
     rects: list[tuple[float, float, float, float]] = []
@@ -115,19 +116,55 @@ def check(model_stem: str, tex_name: str) -> list[str]:
     if bad_faces > 5:
         errs.append(f"{model_stem}: … {bad_faces - 5} more face-rule failures")
 
-    # Diagonal neighbors can each expand 0.1 into the same empty corner → 0.2×0.2 kiss.
-    kiss = 0.2 * min(ux, uy) + 1e-6
+    # No area overlaps after L-split (kiss corners reassigned to one owner).
     overlaps = 0
+    kisses = 0
     for i, a in enumerate(rects):
         for b in rects[i + 1 :]:
             ox = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
             oy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
             if ox > 1e-9 and oy > 1e-9:
-                if ox <= kiss and oy <= kiss:
-                    continue
                 overlaps += 1
+                if ox <= 0.2 * min(ux, uy) + 1e-6 and oy <= 0.2 * min(ux, uy) + 1e-6:
+                    kisses += 1
     if overlaps:
-        errs.append(f"{model_stem}: {overlaps} area overlaps")
+        errs.append(f"{model_stem}: {overlaps} area overlaps ({kisses} diagonal kisses)")
+
+    # L-split may produce multiple cubes per texel; union AABB must stay flush.
+    by_cell_box: dict[tuple[int, int], tuple[float, float, float, float]] = {}
+    for e in els:
+        origin = e.get("rotation", {}).get("origin", [0, 0, 0])
+        tx = int(round(origin[0] / ux))
+        my = int(round(origin[1] / uy))
+        ty = h - my - 1
+        box = (
+            min(e["from"][0], e["to"][0]),
+            min(e["from"][1], e["to"][1]),
+            max(e["from"][0], e["to"][0]),
+            max(e["from"][1], e["to"][1]),
+        )
+        if (tx, ty) in by_cell_box:
+            a = by_cell_box[(tx, ty)]
+            by_cell_box[(tx, ty)] = (
+                min(a[0], box[0]),
+                min(a[1], box[1]),
+                max(a[2], box[2]),
+                max(a[3], box[3]),
+            )
+        else:
+            by_cell_box[(tx, ty)] = box
+    gaps = 0
+    for (tx, ty), a in by_cell_box.items():
+        if (tx + 1, ty) in by_cell_box:
+            b = by_cell_box[(tx + 1, ty)]
+            if b[0] - a[2] > 1e-6:
+                gaps += 1
+        if (tx, ty - 1) in by_cell_box:
+            b = by_cell_box[(tx, ty - 1)]
+            if b[1] - a[3] > 1e-6:
+                gaps += 1
+    if gaps:
+        errs.append(f"{model_stem}: {gaps} ortho gaps")
 
     unit = min(ux, uy)
     thickened = sum(

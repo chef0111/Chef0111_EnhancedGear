@@ -1,5 +1,5 @@
 {
-	"parent": "minecraft:item/handheld",
+	"parent": "minecraft:item/spear_in_hand",
 	"gui_light": "front",
 	"credit": "Classic Tools Fusion texture",
 	"textures": {
