@@ -1,80 +1,187 @@
 #!/usr/bin/env python3
-"""Verify glow models: full silhouette + original-style touching-face hiding."""
+"""Verify exact-1x1 + exterior-wrap glow models: coverage, face hide, no overlaps."""
+
+from __future__ import annotations
+
 import json
-from pathlib import Path
-from PIL import Image
 from collections import Counter
+from pathlib import Path
+
+from PIL import Image
 
 base = Path(r"D:\.legacy\Minecraft\game\home\Fabric-26.2\resourcepacks\Chef0111_EnhancedGear")
+MODELS = base / "assets/minecraft/models/item"
+TEX = base / "assets/minecraft/textures/item"
+
+MATERIALS = ["wooden", "stone", "iron", "golden", "copper", "diamond", "netherite"]
+CREDIT_MARK = "0.1 exterior wrap"
+HIDDEN = [0, 0, 1, 1]
 
 
-def opaque_tex(name: str):
-    im = Image.open(base / f"assets/minecraft/textures/item/{name}.png").convert("RGBA")
+def opaque_tex(name: str) -> tuple[set[tuple[int, int]], int, int]:
+    im = Image.open(TEX / f"{name}.png").convert("RGBA")
     px = im.load()
     w, h = im.size
     return {(x, y) for y in range(h) for x in range(w) if px[x, y][3] > 0}, w, h
 
 
-def check(item: str) -> list[str]:
-    errs = []
-    op, w, h = opaque_tex(item)
-    data = json.loads(
-        (base / f"assets/minecraft/models/item/enchanted_{item}.json").read_text(encoding="utf-8")
-    )
-    if len(data["elements"]) != len(op):
-        errs.append(f"{item}: els {len(data['elements'])} != opaque {len(op)}")
+def check(model_stem: str, tex_name: str) -> list[str]:
+    errs: list[str] = []
+    op, w, h = opaque_tex(tex_name)
+    ux, uy = 16.0 / w, 16.0 / h
+    data = json.loads((MODELS / f"{model_stem}.json").read_text(encoding="utf-8"))
+    credit = data.get("credit", "")
+    if CREDIT_MARK not in credit:
+        errs.append(f"{model_stem}: missing wrap credit ({credit!r})")
 
-    by_cell = {}
-    for e in data["elements"]:
+    els = data["elements"]
+    if len(els) != len(op):
+        errs.append(f"{model_stem}: els {len(els)} != opaque {len(op)}")
+
+    by_cell: dict[tuple[int, int], dict] = {}
+    rects: list[tuple[float, float, float, float]] = []
+    sizes: Counter[tuple[float, float]] = Counter()
+    bad_uv = 0
+
+    for e in els:
         if set(e["faces"]) != {"north", "south", "east", "west", "up", "down"}:
-            errs.append(f"{item}: missing face keys")
+            errs.append(f"{model_stem}: missing face keys")
             break
-        x0, y0, _ = e["from"]
-        tx = int(round(min(x0, e["to"][0]) - 0.1))
-        my = int(round(min(y0, e["to"][1]) + 0.1))
+        fr, to = e["from"], e["to"]
+        x0, x1 = min(fr[0], to[0]), max(fr[0], to[0])
+        y0, y1 = min(fr[1], to[1]), max(fr[1], to[1])
+        rects.append((x0, y0, x1, y1))
+        sizes[(round(x1 - x0, 3), round(y1 - y0, 3))] += 1
+
+        origin = e.get("rotation", {}).get("origin", [0, 0, 0])
+        tx = int(round(origin[0] / ux))
+        my = int(round(origin[1] / uy))
         ty = h - my - 1
         by_cell[(tx, ty)] = e["faces"]
-        # N/S always visible
-        if e["faces"]["north"]["uv"] == [0, 0, 1, 1] or e["faces"]["south"]["uv"] == [0, 0, 1, 1]:
-            errs.append(f"{item}: N/S hidden at {(tx, ty)}")
 
+        expected_uv = [
+            float(min(15, (tx * 16) // w)),
+            float(min(15, (ty * 16) // h)),
+            float(min(15, (tx * 16) // w) + 1),
+            float(min(15, (ty * 16) // h) + 1),
+        ]
+        # N/S must stay visible. Skip when the solid UV equals the hide marker
+        # (glow atlas cell 0,0), which is indistinguishable from HIDDEN.
+        if expected_uv != HIDDEN:
+            if e["faces"]["north"]["uv"] == HIDDEN or e["faces"]["south"]["uv"] == HIDDEN:
+                errs.append(f"{model_stem}: N/S hidden at {(tx, ty)}")
+        for fd in e["faces"].values():
+            uv = fd.get("uv")
+            if uv and any(v < 0 or v > 16 for v in uv):
+                bad_uv += 1
+
+    if bad_uv:
+        errs.append(f"{model_stem}: {bad_uv} OOB UVs")
     if set(by_cell) != op:
-        errs.append(f"{item}: cell set mismatch")
+        missing = sorted(op - set(by_cell))[:5]
+        extra = sorted(set(by_cell) - op)[:5]
+        errs.append(f"{model_stem}: cell set mismatch missing={missing} extra={extra}")
 
-    # Touching-face rule
     dirs = {
         "east": (1, 0),
         "west": (-1, 0),
-        "up": (0, -1),  # lower texture y
+        "up": (0, -1),
         "down": (0, 1),
     }
-    bad = 0
+    bad_faces = 0
     for (tx, ty), faces in by_cell.items():
+        expected_uv = [
+            float(min(15, (tx * 16) // w)),
+            float(min(15, (ty * 16) // h)),
+            float(min(15, (tx * 16) // w) + 1),
+            float(min(15, (ty * 16) // h) + 1),
+        ]
         for face, (dx, dy) in dirs.items():
             touching = (tx + dx, ty + dy) in op
-            hidden = faces[face]["uv"] == [0, 0, 1, 1]
-            if touching != hidden:
-                bad += 1
-                if bad <= 5:
+            uv = faces[face]["uv"]
+            if touching:
+                ok = uv == HIDDEN
+            elif expected_uv == HIDDEN:
+                ok = True  # open face UV collides with hide marker
+            else:
+                ok = uv == expected_uv
+            if not ok:
+                bad_faces += 1
+                if bad_faces <= 5:
                     errs.append(
-                        f"{item}: face rule fail {(tx, ty)} {face} touching={touching} hidden={hidden}"
+                        f"{model_stem}: face rule fail {(tx, ty)} {face} "
+                        f"touching={touching} uv={uv}"
                     )
-    if bad:
-        errs.append(f"{item}: {bad} face-rule mismatches total")
+    if bad_faces > 5:
+        errs.append(f"{model_stem}: … {bad_faces - 5} more face-rule failures")
 
-    vis = Counter(
-        sum(1 for f in e["faces"].values() if f["uv"] != [0, 0, 1, 1]) for e in data["elements"]
+    # Diagonal neighbors can each expand 0.1 into the same empty corner → 0.2×0.2 kiss.
+    kiss = 0.2 * min(ux, uy) + 1e-6
+    overlaps = 0
+    for i, a in enumerate(rects):
+        for b in rects[i + 1 :]:
+            ox = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+            oy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+            if ox > 1e-9 and oy > 1e-9:
+                if ox <= kiss and oy <= kiss:
+                    continue
+                overlaps += 1
+    if overlaps:
+        errs.append(f"{model_stem}: {overlaps} area overlaps")
+
+    unit = min(ux, uy)
+    thickened = sum(
+        c for (sx, sy), c in sizes.items() if sx > unit + 1e-6 or sy > unit + 1e-6
     )
-    print(f"OK-ish {item}: els={len(data['elements'])} visible-face hist={dict(vis)} errs={len(errs)}")
+    if thickened == 0:
+        errs.append(f"{model_stem}: no exterior-thickened cubes")
+
     return errs
 
 
-errors = []
-for item in ["diamond_sword", "copper_axe", "netherite_pickaxe", "iron_shovel", "wooden_hoe"]:
-    errors.extend(check(item))
+def main() -> None:
+    errors: list[str] = []
 
-print("ERRORS", len(errors))
-for e in errors:
-    print(" -", e)
-if not errors:
-    print("ALL CHECKS PASSED")
+    for shared in ["sword", "pickaxe", "axe", "shovel", "hoe", "spear"]:
+        p = MODELS / f"enchanted_{shared}.json"
+        credit = json.loads(p.read_text(encoding="utf-8")).get("credit", "")
+        if CREDIT_MARK in credit or "Classic silhouette" in credit:
+            errors.append(f"shared enchanted_{shared}.json was overwritten ({credit!r})")
+
+    targets: list[tuple[str, str]] = []
+    for mat in MATERIALS:
+        for tool in ["sword", "pickaxe", "axe", "shovel", "hoe", "spear"]:
+            targets.append((f"enchanted_{mat}_{tool}", f"{mat}_{tool}"))
+        hand = f"{mat}_spear_in_hand"
+        tex = hand if (TEX / f"{hand}.png").exists() else f"{mat}_spear"
+        targets.append((f"enchanted_{mat}_spear_in_hand", tex))
+
+    for model_stem, tex_name in targets:
+        if not (MODELS / f"{model_stem}.json").exists():
+            errors.append(f"missing model {model_stem}.json")
+            continue
+        if not (TEX / f"{tex_name}.png").exists():
+            errors.append(f"missing texture {tex_name}.png")
+            continue
+        errors.extend(check(model_stem, tex_name))
+
+    ds = json.loads((MODELS / "enchanted_diamond_sword.json").read_text(encoding="utf-8"))
+    size_hist: Counter[tuple[float, float]] = Counter()
+    for e in ds["elements"]:
+        fr, to = e["from"], e["to"]
+        size_hist[(round(abs(to[0] - fr[0]), 3), round(abs(to[1] - fr[1]), 3))] += 1
+    print("diamond_sword glow size hist:", size_hist.most_common(12))
+    print("diamond_sword elements:", len(ds["elements"]))
+
+    if errors:
+        print(f"FAIL ({len(errors)}):")
+        for e in errors[:40]:
+            print(" ", e)
+        if len(errors) > 40:
+            print(f"  … {len(errors) - 40} more")
+        raise SystemExit(1)
+    print("OK: all classic outlines pass exterior-wrap checks")
+
+
+if __name__ == "__main__":
+    main()

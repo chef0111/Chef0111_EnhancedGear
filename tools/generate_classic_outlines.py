@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Generate Classic-Tools-matched 3D defaults + enchantment outline models for vanilla tools."""
+"""Generate Classic-Tools 3D defaults + enchantment outlines for vanilla tools.
+
+Glow = exact 1x1 pad from latest commit, then +0.1 on every exterior side
+(wraps the silhouette thicker without interior overlaps). Body keeps the
+unwrapped 1x1 pad so FP/GUI stay locked; glow sticks out 0.1 on open edges.
+32x32 spear_in_hand geometry/UVs scale into the 0..16 model/atlas space.
+"""
 
 from __future__ import annotations
 
@@ -136,16 +142,23 @@ def tex_uv(x0: int, y0: int, x1: int, y1: int, w: int = 16, h: int = 16) -> list
     return [float(u0), float(v0), float(u1), float(v1)]
 
 
-# Chef original outline pad for 1x1 cubes: [n.1, m.9] -> [n+1.1, m+0.9]
-# Body must use the same XY pad so outline and tool stay locked together.
+# Exact 1x1 pad from Chef originals / latest commit:
+#   [tx+0.1, my-0.1] -> [tx+1.1, my+0.9]
+# Body keeps that pad. Glow wraps +THICKEN on every exterior side so the
+# silhouette outline reads 0.1 thicker without interior overlaps.
 PAD_X = 0.1
 PAD_Y = -0.1
+THICKEN = 0.1
+GLOW_ATLAS = 16
+CREDIT = "Classic silhouette; exact 1x1 pad + 0.1 exterior wrap"
 
 
 def body_elements(opaque: set[tuple[int, int]], tex_key: str, w: int, h: int) -> list[dict]:
+    """Body uses exact 1x1 pad (merged runs). Scale into 0..16 for 32x32 spears."""
     boxes = merge_runs(opaque)
     elements = []
     z0, z1 = 7.5, 8.5
+    ux, uy = 16.0 / w, 16.0 / h
     for i, (x0, y0, x1, y1) in enumerate(boxes):
         # texture y grows down; model y grows up
         my0 = h - y1
@@ -155,8 +168,16 @@ def body_elements(opaque: set[tuple[int, int]], tex_key: str, w: int, h: int) ->
         elements.append(
             {
                 "name": f"{tex_key}_{i}",
-                "from": [float(x0) + PAD_X, float(my0) + PAD_Y, z0],
-                "to": [float(x1) + PAD_X, float(my1) + PAD_Y, z1],
+                "from": [
+                    round((float(x0) + PAD_X) * ux, 3),
+                    round((float(my0) + PAD_Y) * uy, 3),
+                    z0,
+                ],
+                "to": [
+                    round((float(x1) + PAD_X) * ux, 3),
+                    round((float(my1) + PAD_Y) * uy, 3),
+                    z1,
+                ],
                 "faces": {
                     "north": {"uv": north_uv, "texture": f"#{tex_key}"},
                     "east": {
@@ -182,54 +203,73 @@ def body_elements(opaque: set[tuple[int, int]], tex_key: str, w: int, h: int) ->
     return elements
 
 
+def glow_uv(tx: int, ty: int, w: int, h: int) -> list[float]:
+    """Sample glow atlas in 0..16 even when the tool texture is 32x32."""
+    gu = min(GLOW_ATLAS - 1, (tx * GLOW_ATLAS) // w)
+    gv = min(GLOW_ATLAS - 1, (ty * GLOW_ATLAS) // h)
+    return [float(gu), float(gv), float(gu + 1), float(gv + 1)]
+
+
 def glow_elements(
     opaque: set[tuple[int, int]],
     w: int,
     h: int,
     glow: str = "glow",
 ) -> list[dict]:
-    """Full-item glow mesh matching original enchanted_sword / enchanted_axe.
+    """One cube per opaque texel: exact 1x1 pad, then +0.1 on exterior sides.
 
-    Exact original pattern (one cube per opaque texel):
-    - Size 1x1 with pad [tx+0.1, my-0.1] -> [tx+1.1, my+0.9]
-    - north/south always use the solid glow UV
-    - east/west/up/down use glow UV when open air, or UV [0,0,1,1]
-      when that side touches another opaque cube
-    - z 8.6 -> 7.4, light_emission 15
+    Base (latest commit): [tx+0.1, my-0.1] -> [tx+1.1, my+0.9]
+    Wrap: expand each open side by THICKEN (0.1). Shared edges stay flush,
+    so adjacent cubes never overlap — only the silhouette rim grows thicker.
 
-    Body models use the same XY pad so the outline is not shifted relative
-    to the tool in first-person / GUI.
+    Body keeps the unwrapped 1x1 pad (same center / PAD), so FP/GUI do not
+    shift; the glow simply sticks out 0.1 past the body on open edges.
     """
     elements: list[dict] = []
     z_front, z_back = 8.6, 7.4
+    ux, uy = 16.0 / w, 16.0 / h
     hidden = {"uv": [0, 0, 1, 1], "texture": f"#{glow}"}
 
     for tx, ty in sorted(opaque, key=lambda p: (p[1], p[0])):
         my = h - ty - 1
-        fx0 = float(tx) + PAD_X
-        fx1 = float(tx) + 1.0 + PAD_X
-        fy0 = float(my) + PAD_Y
-        fy1 = float(my) + 1.0 + PAD_Y
-        uv = tex_uv(tx, ty, tx + 1, ty + 1, w, h)
+        open_w = (tx - 1, ty) not in opaque
+        open_e = (tx + 1, ty) not in opaque
+        open_u = (tx, ty - 1) not in opaque  # model +Y
+        open_d = (tx, ty + 1) not in opaque  # model -Y
+
+        fx0 = float(tx) + PAD_X - (THICKEN if open_w else 0.0)
+        fx1 = float(tx) + 1.0 + PAD_X + (THICKEN if open_e else 0.0)
+        fy0 = float(my) + PAD_Y - (THICKEN if open_d else 0.0)
+        fy1 = float(my) + 1.0 + PAD_Y + (THICKEN if open_u else 0.0)
+
+        uv = glow_uv(tx, ty, w, h)
         visible = {"uv": uv, "texture": f"#{glow}"}
 
         elements.append(
             {
-                "from": [fx0, fy0, z_front],
-                "to": [fx1, fy1, z_back],
+                "from": [
+                    round(fx0 * ux, 3),
+                    round(fy0 * uy, 3),
+                    z_front,
+                ],
+                "to": [
+                    round(fx1 * ux, 3),
+                    round(fy1 * uy, 3),
+                    z_back,
+                ],
                 "light_emission": 15,
                 "rotation": {
                     "angle": 0,
                     "axis": "y",
-                    "origin": [float(tx), float(my), 5.7],
+                    "origin": [round(float(tx) * ux, 3), round(float(my) * uy, 3), 5.7],
                 },
                 "faces": {
                     "north": visible,
                     "south": visible,
-                    "east": hidden if (tx + 1, ty) in opaque else visible,
-                    "west": hidden if (tx - 1, ty) in opaque else visible,
-                    "up": hidden if (tx, ty - 1) in opaque else visible,
-                    "down": hidden if (tx, ty + 1) in opaque else visible,
+                    "east": hidden if not open_e else visible,
+                    "west": hidden if not open_w else visible,
+                    "up": hidden if not open_u else visible,
+                    "down": hidden if not open_d else visible,
                 },
             }
         )
@@ -309,7 +349,7 @@ def build_outline_model(
     return {
         "parent": "minecraft:item/handheld",
         "gui_light": "front",
-        "credit": "Generated from Classic Tools Fusion silhouette",
+        "credit": CREDIT,
         "textures": {
             glow_key: "item/enchanted_tool_overlays/enchantment_outline",
             "particle": "item/enchanted_tool_overlays/enchantment_outline",
